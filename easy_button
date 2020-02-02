@@ -10,6 +10,7 @@ const int KEY_ENTER = 176;
 const int KEY_COMMAND = 131;
 const int KEY_ALT = 130;
 const int KEY_SHIFT = 129;
+const int KEY_CNTRL = 128;
 
 //press delay
 const int PRESS_DELAY = 1000; //1 sec
@@ -35,9 +36,10 @@ void loop() {
 
   if (digitalRead(PORT_SECOND) == HIGH) {
     Serial.write("exit vim");
+    Keyboard.press(KEY_SHIFT);
     Keyboard.press(':');
-    Keyboard.release(':');
-    Keyboard.write("wq");
+    Keyboard.releaseAll();
+    Keyboard.print("wq");
     delay(100);
     Keyboard.press(KEY_ENTER);
     Keyboard.releaseAll();
@@ -47,7 +49,8 @@ void loop() {
   if (digitalRead(PORT_THIRD) == HIGH) {
     Serial.write("lock screen");
     Keyboard.press(KEY_COMMAND);
-    Keyboard.press('l');
+    Keyboard.press(KEY_CNTRL);
+    Keyboard.press('q');
     Keyboard.releaseAll();
     delay(PRESS_DELAY);
   }
