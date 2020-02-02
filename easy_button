@@ -1,0 +1,54 @@
+#include "Keyboard.h"
+
+//ports
+const int PORT_FIRST = 18;
+const int PORT_SECOND = 19;
+const int PORT_THIRD = 20;
+
+//keys
+const int KEY_ENTER = 176;
+const int KEY_COMMAND = 131;
+const int KEY_ALT = 130;
+const int KEY_SHIFT = 129;
+
+//press delay
+const int PRESS_DELAY = 1000; //1 sec
+
+void setup() {
+  pinMode(PORT_FIRST, INPUT);
+  pinMode(PORT_SECOND, INPUT);
+  pinMode(PORT_THIRD, INPUT);
+
+  Serial.begin(9600);//debug
+  Keyboard.begin();
+}
+
+void loop() {
+  if (digitalRead(PORT_FIRST) == HIGH) {
+    Serial.write("format code");
+    Keyboard.press(KEY_COMMAND);
+    Keyboard.press(KEY_ALT);
+    Keyboard.press('l');
+    Keyboard.releaseAll();
+    delay(PRESS_DELAY);
+  }
+
+  if (digitalRead(PORT_SECOND) == HIGH) {
+    Serial.write("exit vim");
+    Keyboard.press(':');
+    Keyboard.release(':');
+    Keyboard.write("wq");
+    delay(100);
+    Keyboard.press(KEY_ENTER);
+    Keyboard.releaseAll();
+    delay(PRESS_DELAY);
+  }
+
+  if (digitalRead(PORT_THIRD) == HIGH) {
+    Serial.write("lock screen");
+    Keyboard.press(KEY_COMMAND);
+    Keyboard.press('l');
+    Keyboard.releaseAll();
+    delay(PRESS_DELAY);
+  }
+}
