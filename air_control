@@ -1,0 +1,261 @@
+#include <SoftwareWire.h>
+#include <RtcDS1307.h>
+#include <Servo.h>
+#include <EEPROM.h>
+
+Servo servo;
+SoftwareWire myWire(SDA, SCL);
+RtcDS1307<SoftwareWire> rtc(myWire);
+
+int const SERVO_PIN = 6; //D6
+int const BUTTON_PIN = 4; //D4
+int const MAX_POSITION_OPEN = 0;
+int const MAX_POSITION_CLOSED = 180;
+int const BASE_DELAY = 500;
+int const SERVO_STEP = 1;
+int const SERVO_SPEED = 50;
+
+struct Schedule {
+  int fromHour = 9;
+  int toHour = 22;
+  int openFromMin = 0;
+  int openToMin = 5;
+};
+
+Schedule schedule;
+int openPosition = -1;
+int closePosition = -1;
+int currentState = -1; //1 - opened 2 - closed
+
+void setup() {
+  Serial.begin(9600);//debug
+
+  servo.attach(SERVO_PIN);
+  pinMode(BUTTON_PIN, INPUT);
+
+  initTimer();
+  readData();
+  Serial.println(String(openPosition) + ":" + String(closePosition) + ":"  + String(currentState));
+  printDateTime(rtc.GetDateTime());
+}
+
+void loop() {
+  if (digitalRead(BUTTON_PIN) == HIGH) {
+    printDateTime(rtc.GetDateTime());
+    buttonPushed();
+  }
+
+  RtcDateTime time = rtc.GetDateTime();
+  if (time.Hour() >= schedule.fromHour && time.Hour() < schedule.toHour) {
+    automaticControl(time);
+  }
+
+  if (Serial.read() == 's') {
+    syncTime();
+  }
+}
+
+void buttonPushed() {
+  Serial.println("Button pushed");
+  delay(BASE_DELAY); //wait 1 secs
+
+  if (digitalRead(BUTTON_PIN) == HIGH) {
+    enterServiceMode();
+    return;
+  }
+
+  switch (currentState) {
+    case 1:
+      closeWindow();
+      break;
+    case 2:
+      openWindow();
+      break;
+  }
+
+  delay(BASE_DELAY);
+}
+
+void enterServiceMode() {
+  delay(BASE_DELAY + 1000);
+  if (digitalRead(BUTTON_PIN) != HIGH) {
+    return;
+  }
+  printDateTime(rtc.GetDateTime());
+
+  Serial.println("Service mode");
+  serviceSignal();
+
+  delay(BASE_DELAY);
+  int click = 1;
+  while (click < 3) {
+    if (digitalRead(BUTTON_PIN) == HIGH) {
+      switch (click) {
+        case 1:
+          openPosition = MAX_POSITION_OPEN;
+          openWindow();
+          openPosition = servo.read();
+          currentState = 1;
+          break;
+        case 2:
+          closePosition = MAX_POSITION_CLOSED;
+          closeWindow();
+          closePosition = servo.read();
+          currentState = 2;
+          break;
+      }
+
+      saveData();
+      delay(BASE_DELAY);
+      click++;
+    }
+  }
+}
+
+void closeWindow() {
+  if (closePosition == -1) {
+    Serial.println("Close position is not initialized");
+    return;
+  }
+
+  delay(BASE_DELAY);
+  Serial.println("Closing" + String(servo.read()));
+  for (int i = servo.read(); i <= closePosition; i += SERVO_STEP) {
+    servo.write(i);
+    if (digitalRead(BUTTON_PIN) == HIGH) {
+      delay(BASE_DELAY);
+      return;
+    }
+
+    delay(SERVO_SPEED);
+  }
+
+  currentState = 2;
+  Serial.println(String(servo.read()));
+}
+
+void openWindow() {
+  if (openPosition == -1) {
+    Serial.println("Open position is not initialized");
+    return;
+  }
+
+  delay(BASE_DELAY);
+  Serial.println("Opening" + String(servo.read()));
+  for (int i = servo.read(); i >= openPosition; i -= SERVO_STEP) {
+    servo.write(i);
+
+    if (digitalRead(BUTTON_PIN) == HIGH) {
+      delay(BASE_DELAY);
+      return;
+    }
+
+    delay(SERVO_SPEED);
+  }
+
+  currentState = 1;
+  Serial.println(String(servo.read()));
+}
+
+void serviceSignal() {
+  servo.write(servo.read() + 10);
+  delay(100);
+  servo.write(servo.read() - 10);
+}
+
+void initTimer() {
+  rtc.Begin();
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+
+  if (!rtc.IsDateTimeValid())
+  {
+    if (rtc.LastError() != 0)
+    {
+      Serial.print("RTC communications error = ");
+      Serial.println(rtc.LastError());
+    }
+    else
+    {
+      Serial.println("RTC lost confidence in the DateTime!");
+      rtc.SetDateTime(compiled);
+    }
+  }
+
+  if (!rtc.GetIsRunning())
+  {
+    Serial.println("RTC was not actively running, starting now");
+    rtc.SetIsRunning(true);
+  }
+
+  RtcDateTime now = rtc.GetDateTime();
+  if (now < compiled)
+  {
+    Serial.println("RTC is older than compile time!  (Updating DateTime)");
+    rtc.SetDateTime(compiled);
+  }
+}
+
+void automaticControl(const RtcDateTime& time) {
+  if (time.Minute() >= schedule.openFromMin && time.Minute() <= schedule.openFromMin) {
+    if (currentState == 1) {
+      closeWindow();
+    }
+  } else {
+    if (currentState == 2) {
+      openWindow();
+    }
+  }
+}
+
+void syncTime() {
+  Serial.println("Enter seconds from 1 Jan 2000");
+
+  rtc.SetDateTime(RtcDateTime(Serial.readString().toInt()));
+  printDateTime(rtc.GetDateTime());
+}
+
+#define countof(a) (sizeof(a) / sizeof(a[0]))
+
+void printDateTime(const RtcDateTime& dt)
+{
+  char datestring[20];
+
+  snprintf_P(datestring,
+             countof(datestring),
+             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
+             dt.Month(),
+             dt.Day(),
+             dt.Year(),
+             dt.Hour(),
+             dt.Minute(),
+             dt.Second() );
+  Serial.print(datestring);
+}
+
+void saveData() {
+  EEPROM.write(0, 1);
+  EEPROM.write(1, openPosition);
+  EEPROM.write(2, 1);
+  EEPROM.write(3, closePosition);
+  EEPROM.write(4, 1);
+  EEPROM.write(5, currentState);
+}
+
+void readData() {
+  int isValueSaved;
+
+  isValueSaved = EEPROM.read(0);
+  if (isValueSaved == 1) {
+    openPosition = EEPROM.read(1);
+  }
+
+  isValueSaved = EEPROM.read(2);
+  if (isValueSaved == 1) {
+    closePosition = EEPROM.read(3);
+  }
+
+  isValueSaved = EEPROM.read(4);
+  if (isValueSaved == 1) {
+    currentState = EEPROM.read(5);
+  }
+}
