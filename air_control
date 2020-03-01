@@ -196,7 +196,7 @@ void initTimer() {
 }
 
 void automaticControl(const RtcDateTime& time) {
-  if (time.Minute() >= schedule.openFromMin && time.Minute() <= schedule.openFromMin) {
+  if (time.Minute() >= schedule.openFromMin && time.Minute() < schedule.openToMin) {
     if (currentState == 1) {
       closeWindow();
     }
